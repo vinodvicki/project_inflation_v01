@@ -1,57 +1,49 @@
-# Main application entry point
-# This file will initialize and run the web application (e.g., Flask, FastAPI).
+from fastapi import FastAPI
+from app.api.v1 import router as api_v1_router # Will be defined shortly
+from app.core.config import settings
+from app.db import create_database_tables # For initial DB setup if needed
 
-# --- Example for FastAPI ---
-# from fastapi import FastAPI
-# from app.api.v1 import router as v1_api_router
-# # from app.core import config # If you have a config module
-# # from app.db import database # If you set up database connections here
+# Initialize FastAPI app
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    description="API for the Career Co-Pilot application, helping users understand their compensation and career steps.",
+    version="0.1.0" # Can be dynamic later
+)
 
-# app = FastAPI(
-#     title="Career Co-Pilot API",
-#     description="API for the Career Co-Pilot application, helping users understand their compensation and career steps.",
-#     version="0.1.0"
-# )
+# Include API routers
+app.include_router(api_v1_router, prefix="/api") # All v1 routes will be under /api/v1
 
-# # Include API routers
-# app.include_router(v1_api_router) # Mounts all routes from app/api/v1/__init__.py
+@app.on_event("startup")
+async def startup_event():
+    """
+    Actions to perform on application startup.
+    - Create database tables (if they don't exist). This is suitable for development.
+      For production, migrations (e.g. Alembic) are preferred.
+    """
+    print("Application startup...")
+    # In a real app, you might connect to a database pool here if not using SQLAlchemy engine's implicit pooling.
+    # For SQLite with SQLAlchemy, the engine handles connections as needed.
 
-# @app.on_event("startup")
-# async def startup_event():
-#     # print("Application startup...")
-#     # await database.connect() # Example: connect to database
-#     pass
-
-# @app.on_event("shutdown")
-# async def shutdown_event():
-#     # print("Application shutdown...")
-#     # await database.disconnect() # Example: disconnect from database
-#     pass
-
-# @app.get("/")
-# async def read_root():
-#     return {"message": "Welcome to the Career Co-Pilot API"}
-
-# # To run (assuming Uvicorn is installed: pip install uvicorn):
-# # uvicorn app.main:app --reload
-
-# --- Example for Flask ---
-# from flask import Flask
-# from app.api.v1 import v1_blueprint # Assuming v1_blueprint is defined in app/api/v1/__init__.py
-
-# app = Flask(__name__)
-
-# # Register blueprints
-# app.register_blueprint(v1_blueprint) # All routes from v1 will be under /api/v1
-
-# @app.route("/")
-# def index():
-#     return "Welcome to the Career Co-Pilot API (Flask)"
-
-# if __name__ == "__main__":
-#    # app.run(debug=True) # For development
-#    pass
+    # Create tables - useful for first run / dev.
+    # Consider moving this to a separate CLI command for production.
+    create_database_tables() # This was defined in app/db.py
+    print("Database tables checked/created.")
 
 
-# For now, just a pass statement as no framework is fully integrated.
-pass
+@app.on_event("shutdown")
+async def shutdown_event():
+    """
+    Actions to perform on application shutdown.
+    """
+    print("Application shutdown...")
+    # Clean up resources, e.g., close database connections if explicitly managed.
+
+@app.get("/")
+async def read_root():
+    """
+    Root endpoint for basic API health check or welcome message.
+    """
+    return {"message": f"Welcome to the {settings.PROJECT_NAME}"}
+
+# To run this application (from the project root directory):
+# uvicorn app.main:app --reload

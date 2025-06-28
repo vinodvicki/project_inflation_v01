@@ -1,9 +1,9 @@
 # Project Dependencies
 
 # --- Web Framework (choose one) ---
-# fastapi
-# uvicorn[standard] # ASGI server for FastAPI
-# pydantic # For data validation with FastAPI
+fastapi
+uvicorn[standard] # ASGI server for FastAPI
+# pydantic is a dependency of fastapi, so it will be installed automatically.
 
 # flask
 
