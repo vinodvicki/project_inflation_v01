@@ -1,0 +1,23 @@
+# Project Dependencies
+
+# --- Web Framework (choose one) ---
+# fastapi
+# uvicorn[standard] # ASGI server for FastAPI
+# pydantic # For data validation with FastAPI
+
+# flask
+
+# --- Database (choose one ORM if using SQL) ---
+sqlalchemy # For ORM and SQLite interaction
+# alembic # For database migrations (good to add later)
+# psycopg2-binary # For PostgreSQL (if used in production)
+# pymysql # For MySQL (if used in production)
+
+# --- Other Potential Libraries ---
+# python-jose[cryptography] # For JWT token handling (if using token-based auth)
+# passlib[bcrypt] # For password hashing (alternative to hashlib if stronger algo needed)
+# requests # For making HTTP requests to external APIs (Market Data, Skills API)
+# python-dotenv # For managing environment variables
+pytz # For timezone handling with datetime objects
+
+# For now, this is a placeholder. Add dependencies as they are chosen/used.
