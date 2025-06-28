@@ -31,30 +31,25 @@ class User(Base):
     # but we need it for password hashing and email lowercasing.
     # SQLAlchemy's __init__ by default accepts kwargs for column attributes.
     def __init__(self, email: str, password: str, first_name: str = "", last_name: str = "", **kwargs):
-        # If 'id' is passed via kwargs (e.g. when loading from DB), SQLAlchemy handles it.
-        # Otherwise, our default lambda for 'id' column will generate it.
-        # We call super().__init__ to let SQLAlchemy handle its part.
-        # We only explicitly set attributes that need special handling before DB commit.
-        super().__init__(email=email.lower(), first_name=first_name, last_name=last_name, **kwargs)
-        if 'id' not in kwargs: # If id is not being set from DB load
-             self.id = str(uuid.uuid4()) # Ensure id is generated if not loaded
-        self.set_password(password)
-        # Note: created_at and updated_at are handled by the database via server_default/onupdate.
-        # No need to set them in __init__ if using server_default.
+        from app.core.auth import get_password_hash # Local import to avoid circular dependency at module level
 
-    def set_password(self, password: str):
-        """Hashes the password using SHA-256 with a salt."""
-        salt = uuid.uuid4().hex
-        hashed_password = hashlib.sha256(salt.encode() + password.encode()).hexdigest()
-        self.password_hash = f"{salt}${hashed_password}"
+        super().__init__(email=email.lower(), first_name=first_name, last_name=last_name, **kwargs)
+        if 'id' not in kwargs and not self.id: # Ensure id is set if not loaded or already defaulted by SA
+             self.id = str(uuid.uuid4())
+        self.password_hash = get_password_hash(password) # Use passlib for hashing
+
+    # set_password is no longer needed as hashing is done in __init__ via get_password_hash
+    # If password changes are allowed post-creation, a method like this would be needed:
+    # def set_password(self, password: str):
+    #     from app.core.auth import get_password_hash
+    #     self.password_hash = get_password_hash(password)
 
     def check_password(self, password: str) -> bool:
-        """Checks if the provided password matches the stored hash."""
-        if not self.password_hash or '$' not in self.password_hash:
+        """Checks if the provided password matches the stored passlib hash."""
+        from app.core.auth import verify_password # Local import
+        if not self.password_hash:
             return False
-        salt, stored_hash_part = self.password_hash.split('$', 1)
-        input_password_hash = hashlib.sha256(salt.encode() + password.encode()).hexdigest()
-        return input_password_hash == stored_hash_part
+        return verify_password(password, self.password_hash)
 
     def to_dict(self) -> dict:
         """Returns a dictionary representation of the user, excluding sensitive data."""

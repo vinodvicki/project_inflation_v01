@@ -14,8 +14,8 @@ sqlalchemy # For ORM and SQLite interaction
 # pymysql # For MySQL (if used in production)
 
 # --- Other Potential Libraries ---
-# python-jose[cryptography] # For JWT token handling (if using token-based auth)
-# passlib[bcrypt] # For password hashing (alternative to hashlib if stronger algo needed)
+python-jose[cryptography] # For JWT token handling
+passlib[bcrypt] # For password hashing
 # requests # For making HTTP requests to external APIs (Market Data, Skills API)
 # python-dotenv # For managing environment variables
 pytz # For timezone handling with datetime objects

@@ -1,56 +1,91 @@
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer # Although we are not implementing full OAuth2 flow now,
-                                                 # this helps define how the token is expected.
+from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+from sqlalchemy.orm import Session
 
-# For MVP, we'll use a very simple hardcoded token check.
-# In a real app, this would involve database lookups, token decoding (e.g., JWT), etc.
-MOCK_VALID_TOKEN = "fake-super-secret-token-for-mvp"
-MOCK_USER_ID = "mock_user_001_auth" # Different from the one in dashboard_endpoints placeholder
+from app.core.config import settings
+from app.db import get_db # To fetch user from DB
+from app.models.user import User as UserModel # SQLAlchemy User model
+from app.schemas.token_schemas import TokenData # Pydantic schema for token payload
 
-# This scheme tells FastAPI to look for an Authorization header with a Bearer token.
-# tokenUrl is not strictly needed if we don't have a /token endpoint yet, but good practice.
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token") # "token" would be the login endpoint
+# Password Hashing Setup (using bcrypt)
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-class UserForAuth:
+# OAuth2PasswordBearer scheme for token input
+# tokenUrl will point to our login endpoint (e.g., "/api/v1/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_PREFIX}/auth/login")
+
+
+# --- Password Utilities ---
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verifies a plain password against a hashed password."""
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password: str) -> str:
+    """Hashes a plain password."""
+    return pwd_context.hash(password)
+
+
+# --- JWT Token Utilities ---
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """Creates a new JWT access token."""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        # Default expiration time from settings
+        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return encoded_jwt
+
+
+# --- User Authentication Dependency ---
+async def get_current_user(
+    db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
+) -> UserModel: # Return the SQLAlchemy UserModel instance
     """
-    A simple class to represent the authenticated user's data.
-    In a real app, this might be your SQLAlchemy User model or a Pydantic schema.
+    Decodes JWT token, validates it, and retrieves the user from the database.
+    Raises HTTPException if token is invalid or user not found.
     """
-    def __init__(self, id: str, email: str, is_active: bool = True):
-        self.id = id
-        self.email = email
-        self.is_active = is_active # Could be used for active/inactive users
-
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserForAuth:
-    """
-    Dependency to get the current authenticated user.
-    For MVP: Checks a hardcoded token.
-    """
-    if token == MOCK_VALID_TOKEN:
-        # In a real app, you would:
-        # 1. Decode the token (if JWT) to get user_id.
-        # 2. Fetch user from DB using user_id.
-        # 3. Check if user is active, etc.
-        # For now, return a mock authenticated user object.
-        return UserForAuth(id=MOCK_USER_ID, email=f"{MOCK_USER_ID}@example.com")
-
-    raise HTTPException(
+    credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid authentication credentials",
+        detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id: str = payload.get("sub") # 'sub' claim typically holds the user identifier
+        if user_id is None:
+            raise credentials_exception
+        token_data = TokenData(sub=user_id)
+    except JWTError:
+        raise credentials_exception
 
-async def get_current_active_user(current_user: UserForAuth = Depends(get_current_user)) -> UserForAuth:
+    user = db.query(UserModel).filter(UserModel.id == token_data.sub).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
+
+async def get_current_active_user(
+    current_user: UserModel = Depends(get_current_user)
+) -> UserModel: # Return the SQLAlchemy UserModel instance
     """
-    Wrapper around get_current_user to also check if the user is active.
-    (Example of extending auth checks).
+    Dependency that gets the current user and checks if they are active.
+    (Assuming UserModel has an `is_active` attribute, which it doesn't currently.
+     For now, this is a passthrough, but could be enhanced if `is_active` is added to User model).
     """
-    if not current_user.is_active:
-        raise HTTPException(status_code=400, detail="Inactive user")
+    # if not current_user.is_active: # Add is_active to UserModel if needed
+    #     raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
-# To use this in your endpoints:
-# from app.core.auth import get_current_active_user
-# @router.get("/users/me")
-# async def read_users_me(current_user: UserInDB = Depends(get_current_active_user)):
-#     return current_user
+# Note: The UserForAuth class is no longer needed as get_current_user now returns UserModel.
+# If a Pydantic schema is preferred for the dependency output, it would be:
+# async def get_current_user_pydantic(...) -> UserReadSchema:
+#     user_model = await get_current_user_db_instance(...)
+#     return UserReadSchema.from_orm(user_model)
