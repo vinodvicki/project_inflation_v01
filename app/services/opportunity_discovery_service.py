@@ -65,53 +65,94 @@ def find_next_opportunity_suggestion(compensation_analysis_data: dict, skills_an
 
     # --- Rule Engine ---
 
+    # Extract user's compensation components for easier access
+    user_comp_details = compensation_analysis_data.get("user_compensation", {})
+    user_salary = user_comp_details.get("salary_annual", 0)
+    user_bonus = user_comp_details.get("annual_bonus_amount_calculated", 0) # from property
+    user_equity = user_comp_details.get("equity_value_annual", 0)
+
+    # Extract market compensation components
+    market_comp = compensation_analysis_data.get("market_comparison", {})
+    market_salary_median = market_comp.get("market_salary_median") # Might be None
+    market_bonus_median = market_comp.get("market_bonus_median")   # Might be None
+    market_equity_median = market_comp.get("market_equity_median") # Might be None
+
+    significant_component_gap_threshold = 0.10 # 10%
+
     if market_status == "market_data_error" or gap_percentage is None:
         return {
             "suggestion_text": "Could not determine market position due to data issues. Please try again or update your role/location.",
             "action_type": "review_market_data_input"
         }
 
-    # Rule 1: Significantly Below Market (>15%)
+    # Rule 0: Component-specific suggestions if user is below market overall
+    if market_status == "below_market":
+        # Check Salary Gap
+        if market_salary_median and user_salary < market_salary_median * (1 - significant_component_gap_threshold):
+            salary_gap_perc = ((market_salary_median - user_salary) / market_salary_median) * 100
+            return {
+                "suggestion_text": f"Your base salary appears to be about {salary_gap_perc:.0f}% below the market median of ${market_salary_median:,.0f}. Consider focusing on negotiating a salary increase. {skill_mention_str}",
+                "action_type": "negotiate_salary"
+            }
+        # Check Bonus Gap
+        if market_bonus_median and user_bonus < market_bonus_median * (1 - significant_component_gap_threshold):
+            # Note: user_bonus might be 0 if not applicable. market_bonus_median could also be 0.
+            bonus_gap_perc_text = ""
+            if market_bonus_median > 0 : # Avoid division by zero if market bonus is 0
+                bonus_gap_perc = ((market_bonus_median - user_bonus) / market_bonus_median) * 100
+                bonus_gap_perc_text = f"about {bonus_gap_perc:.0f}% "
+            return {
+                "suggestion_text": f"Your bonus seems {bonus_gap_perc_text}lower than the typical market bonus of ${market_bonus_median:,.0f}. This could be an area for discussion. {skill_mention_str}",
+                "action_type": "negotiate_bonus"
+            }
+        # Check Equity Gap
+        if market_equity_median and user_equity < market_equity_median * (1 - significant_component_gap_threshold):
+            equity_gap_perc_text = ""
+            if market_equity_median > 0:
+                equity_gap_perc = ((market_equity_median - user_equity) / market_equity_median) * 100
+                equity_gap_perc_text = f"about {equity_gap_perc:.0f}% "
+            return {
+                "suggestion_text": f"Your annual equity value appears {equity_gap_perc_text}below the market median of ${market_equity_median:,.0f}. If seeking new roles or in reviews, aim for a more competitive equity package. {skill_mention_str}",
+                "action_type": "negotiate_equity"
+            }
+
+    # Rule 1: Significantly Below Market Overall (>15%), no specific component stood out or component data was missing
     if market_status == "below_market" and gap_percentage > 15:
         return {
             "suggestion_text": f"Your total compensation appears to be {gap_percentage:.1f}% below the market median. This is a significant gap. Focus on negotiating a comprehensive increase. {skill_mention_str}",
             "action_type": "negotiate_total_compensation_significant"
         }
 
-    # Rule 2: Moderately Below Market (5-15%)
-    if market_status == "below_market" and gap_percentage > 5:
+    # Rule 2: Moderately Below Market Overall (5-15%), no specific component stood out
+    if market_status == "below_market" and gap_percentage > 5: # This will catch remaining "below_market" cases
         return {
             "suggestion_text": f"Your total compensation is about {gap_percentage:.1f}% below the market median. Consider discussing an adjustment with your manager. {skill_mention_str}",
             "action_type": "negotiate_total_compensation_moderate"
         }
 
     # Rule 3: Slightly Below Market or At Market, but with High-Impact Skills
-    # This rule tries to find an opportunity even if the gap isn't large.
-    if (market_status == "at_market") or (market_status == "below_market" and gap_percentage <= 5):
-        # Check if user has skills that are specifically marked as 'High' impact
+    if (market_status == "at_market") or (market_status == "below_market" and gap_percentage <= 5): # Catches any remaining "below_market"
         high_impact_skills_from_analysis = [
             s["skill_name"] for s in skills_analysis_data.get("analyzed_skills", [])
             if s.get("salary_impact_indicator", "").lower() == "high"
         ]
-        if not high_impact_skills_from_analysis: # if no "High" impact, use the general top paying list
+        if not high_impact_skills_from_analysis:
             high_impact_skills_from_analysis = user_top_paying_skills_names
 
         if high_impact_skills_from_analysis:
-            prefix = "You're currently compensated close to or at the market rate." if market_status == "at_market" else "Your compensation is slightly below market."
+            prefix = "You're currently compensated close to or at the market rate." if market_status == "at_market" else "Your compensation is slightly below market, or specific components may vary."
             return {
                 "suggestion_text": f"{prefix} To enhance your earnings, focus on leveraging your valuable skills in {', '.join(high_impact_skills_from_analysis)}. Ensure these are visible and their impact is clear.",
                 "action_type": "leverage_high_impact_skills"
             }
-        # If at market and no clear high-impact skills to push, then general advice.
-        if market_status == "at_market":
+        if market_status == "at_market": # Fallback if at_market and no high-impact skills found by above
              return {
                 "suggestion_text": "Your compensation is aligned with the current market. Continue to develop your skills and track achievements for future growth.",
                 "action_type": "maintain_and_develop"
             }
 
-
-    # Rule 4: At Market (general case if not caught by Rule 3 with high impact skills)
-    if market_status == "at_market": # Should have been caught by Rule 3 if skills were present
+    # Rule 4: At Market (general fallback if not caught by Rule 3)
+    if market_status == "at_market":
         return {
             "suggestion_text": "Your compensation is aligned with the current market. Focus on continuous skill development and documenting your achievements.",
             "action_type": "maintain_and_develop"

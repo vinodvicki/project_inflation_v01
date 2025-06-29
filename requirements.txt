@@ -19,5 +19,6 @@ passlib[bcrypt] # For password hashing
 # requests # For making HTTP requests to external APIs (Market Data, Skills API)
 # python-dotenv # For managing environment variables
 pytz # For timezone handling with datetime objects
+httpx # For making asynchronous HTTP requests to external APIs
 
 # For now, this is a placeholder. Add dependencies as they are chosen/used.

@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 
 # Database Configuration
 # For SQLite, DATABASE_URL will be like: sqlite:///./your_database_name.db
@@ -28,6 +29,12 @@ class Settings:
     ACCESS_TOKEN_EXPIRE_MINUTES: int = ACCESS_TOKEN_EXPIRE_MINUTES
 
     API_V1_PREFIX: str = API_V1_PREFIX
+
+    # Market Data API Settings (Hypothetical Levels.fyi)
+    # TODO: Replace with actual API endpoint and ensure API_KEY is from env var in prod
+    MARKET_DATA_API_BASE_URL: str = os.getenv("MARKET_DATA_API_BASE_URL", "https://api.levels.fyi/v1") # Hypothetical
+    MARKET_DATA_API_KEY: Optional[str] = os.getenv("MARKET_DATA_API_KEY", "your_api_key_here_if_needed") # Placeholder
+
     # Add other settings here as needed
 
 settings = Settings()
